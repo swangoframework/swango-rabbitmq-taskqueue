@@ -1,0 +1,30 @@
+{
+    "name" : "swango/rabbitmq-taskqueue",
+    "license" : "Apache-2.0",
+    "keywords" : [
+        "php",
+        "swoole",
+        "task"
+    ],
+    "require" : {
+        "php" : ">=7.1",
+        "swango/stdlib" : "^1.2",
+        "swango/environment" : "^1.0",
+        "bunny/bunny" : "^0.4.1"
+    },
+    "autoload" : {
+        "psr-4" : {
+            "Swango\\MQ\\TaskQueue\\" : "src"
+        }
+    },
+    "config" : {
+        "optimize-autoloader" : true,
+        "sort-packages" : true
+    },
+    "repositories" : {
+        "packagist" : {
+            "type" : "composer",
+            "url" : "https://mirrors.aliyun.com/composer/"
+        }
+    }
+}

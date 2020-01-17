@@ -1,0 +1,10 @@
+{
+    "username" : "myuser",
+    "password" : "mypass",
+    "vhost" : "/",
+    "host" : "rabbitmq",
+    "port" : 5672,
+    "handler_namespace" : "\\Swango\\MQ\\TaskQueue\\Handler\\",
+    "receiver_num" : 5,
+    "recycle_receiver_num" : 1
+}
