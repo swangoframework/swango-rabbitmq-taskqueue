@@ -13,12 +13,13 @@ use Swango\MQ\TaskQueue\Handler\AbstractController;
  * @property int $attempt 已经尝试次数
  * @property int $max_attempt 最大尝试次数 为null则不限制次数
  * @property int $queue_type [timing 延时队列] [pending 待执行队列] [log_recycle 失败队列 待写入日志后移除]
+ * @property bool $is_important 失败后或达最大尝试数后是否写入日志
  */
 class Task {
     const HANDLER_TYPE_CONTROLLER = 'controller';
     const QUEUE_TYPE_TIMING = 'timing', QUEUE_TYPE_PENDING = 'pending', QUEUE_TYPE_LOG_RECYCLE = 'log_recycle';
-    private $uuid, $exec_time, $create_time, $handler, $params, $queue_type, $attempt, $max_attempt;
-    private $receive_msg, $error;
+    private $uuid, $exec_time, $create_time, $handler, $params, $queue_type, $attempt, $max_attempt, $is_important = false;
+    private $error;
     private function __construct() {
     }
     /**
@@ -28,8 +29,8 @@ class Task {
      * @param int|null $max_attempt
      * @return Task
      */
-    public static function init($handler, $params, ?int $exec_time = null, ?int $max_attempt = null): self {
-        $params = base64_encode(\Swoole\Serialize::pack($params));
+    public static function init($handler, $params, ?int $exec_time = null, ?int $max_attempt = null, bool $is_important = true): self {
+        $params = base64_encode(serialize($params));
         if (isset($exec_time)) {
             if ($exec_time < time()) {
                 $exec_time += time();
@@ -48,45 +49,56 @@ class Task {
         $obj->create_time = time();
         $obj->exec_time = $exec_time;
         $obj->queue_type = $queue_type;
+        $obj->is_important = $is_important;
         return $obj;
     }
     public function getQueueType(): string {
         return $this->queue_type;
     }
-    public static function initByAMQPMessage(Message $msg) {
-        $body = $msg->content;
-        $error = null;
-        if ($msg->exchange === self::QUEUE_TYPE_LOG_RECYCLE) {
+    public static function initByAMQPMessageJson(string $msg_json) {
+        $data = \Json::decodeAsArray($msg_json);
+        if ($data['queue_type'] === self::QUEUE_TYPE_LOG_RECYCLE) {
             [
                 'uuid' => $uuid,
+                'queue_type' => $queue_type,
                 'handler' => $handler,
                 'params' => $params,
                 'attempt' => $attempt,
                 'max_attempt' => $max_attempt,
                 'create_time' => $create_time,
+                'is_important' => $is_important,
                 'error' => $error
-            ] = \Json::decodeAsArray($body);
+            ] = $data;
         } else {
             [
                 'uuid' => $uuid,
+                'queue_type' => $queue_type,
                 'handler' => $handler,
                 'params' => $params,
                 'attempt' => $attempt,
                 'max_attempt' => $max_attempt,
                 'create_time' => $create_time,
-            ] = \Json::decodeAsArray($body);
+                'is_important' => $is_important,
+            ] = $data;
         }
+        $error = null;
         $obj = new self();
         $obj->uuid = $uuid;
-        $obj->receive_msg = $msg;
         $obj->handler = $handler;
         $obj->params = $params;
         $obj->create_time = $create_time;
         $obj->attempt = $attempt;
         $obj->max_attempt = $max_attempt;
-        $obj->queue_type = $msg->exchange;
+        $obj->queue_type = $queue_type;
+        $obj->is_important = $is_important;
         $obj->error = $error;
         return $obj;
+    }
+    public static function getTaskJsonByMessage(Message $msg): string {
+        $body = $msg->content;
+        $data = \Json::decodeAsArray($body);
+        $data['queue_type'] = $msg->exchange;
+        return \Json::encode($data);
     }
     public function recycle(\Throwable $e) {
         if ($this->queue_type !== self::QUEUE_TYPE_PENDING) {
@@ -105,7 +117,8 @@ class Task {
             'attempt' => $this->attempt,
             'max_attempt' => $this->max_attempt,
             'create_time' => $this->create_time,
-            'exec_time' => $this->exec_time
+            'exec_time' => $this->exec_time,
+            'is_important' => $this->is_important
         ];
         if ($this->queue_type === self::QUEUE_TYPE_LOG_RECYCLE) {
             $body['error'] = $this->error;
@@ -123,9 +136,6 @@ class Task {
         return $properties;
     }
     public function execTask(): bool {
-        if (! isset($this->receive_msg)) {
-            throw new Exception\RuntimeException('error task execute');
-        }
         $this->attempt = $this->attempt + 1;
         switch ($this->queue_type) {
             case self::QUEUE_TYPE_LOG_RECYCLE:
@@ -138,11 +148,14 @@ class Task {
                 throw new Exception\RuntimeException('error task queue type');
         }
     }
+    static $handler_namespace;
     private function getHandlerController(): AbstractController {
-        [
-            'handler_namespace' => $handler_namespace
-        ] = Environment::getConfig('mq_task');
-        $class_name = $handler_namespace . str_replace('_', '\\', $this->handler) . '\\Controller';
+        if (! isset(self::$handler_namespace)) {
+            [
+                'handler_namespace' => self::$handler_namespace
+            ] = Environment::getFrameworkConfig('mq_task');
+        }
+        $class_name = self::$handler_namespace . str_replace('_', '\\', $this->handler) . '\\Controller';
         if (! class_exists($class_name)) {
             throw new Exception\RuntimeException(sprintf('handler class [%s] is not exists', $class_name));
         }
@@ -155,7 +168,7 @@ class Task {
         return $handler = new $class_name($this);
     }
     private function getParams() {
-        return \Swoole\Serialize::unpack(base64_decode($this->params));
+        return unserialize(base64_decode($this->params));
     }
     private function pendingTaskHandle() {
         try {
@@ -187,15 +200,17 @@ class Task {
         return true;
     }
     private function recycleTaskHandle() {
-        $dir = \Swango\Environment::getDir()->log . 'task_error/';
-        if (! is_dir($dir)) {
-            mkdir($dir);
+        if ($this->is_important) {
+            $dir = \Swango\Environment::getDir()->log . 'task_error/' . str_replace('_', '/', $this->handler) . '/';
+            if (! is_dir($dir)) {
+                mkdir($dir, 0777, true);
+            }
+            $s = sprintf('[%s] : ', date('Y-m-d H:i:s', time()));
+            $s .= sprintf('%s,', $this->getMessageBody());
+            $fp = fopen($dir . date('Y-m-d') . '.log', 'a');
+            fwrite($fp, $s);
+            fclose($fp);
         }
-        $s = sprintf('[%s] : ', date('Y-m-d H:i:s', time()));
-        $s .= sprintf('%s,', $this->getMessageBody());
-        $fp = fopen($dir . date('Y-m-d') . '.log', 'a');
-        fwrite($fp, $s);
-        fclose($fp);
         return true;
     }
 }

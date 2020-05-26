@@ -1,7 +1,6 @@
 <?php
 namespace Swango\MQ\TaskQueue;
 class Sender {
-    private static $channel_pool;
     public static function send(Task $task) {
         $channel = Connection::getChannel();
         switch ($task->getQueueType()) {
