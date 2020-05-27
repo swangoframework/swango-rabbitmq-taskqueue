@@ -33,7 +33,7 @@ class Receiver {
                 'receiver_num' => $receiver_num,
                 'recycle_receiver_num' => $recycle_receiver_num
             ] = Environment::getConfig('rabbitmq');
-            $receive_pool = new \Swoole\Coroutine\Channel($receiver_num);
+            $receive_pool = new \Swoole\Coroutine\Channel($receiver_num + $recycle_receiver_num);
             for ($i = 0; $i < $receiver_num; $i++) {
                 $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
                 $receive_pool->push([
@@ -55,7 +55,7 @@ class Receiver {
                 go(function () use ($data, $receive_pool, $server) {
                     list($queue_type, $channel) = $data;
                     try {
-                        \Swango\MQ\TaskQueue\Receiver::receive($queue_type, $channel);
+                        \Swango\MQ\TaskQueue\Receiver::receive($queue_type, $channel, $server);
                     } catch (\Throwable $e) {
                         trigger_error(get_class($e) . ' ' . $e->getMessage() . ' :' . $e->getTraceAsString());
                         if (isset($channel)) {
