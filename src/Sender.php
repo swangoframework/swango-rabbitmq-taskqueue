@@ -1,41 +1,32 @@
 <?php
 namespace Swango\MQ\TaskQueue;
 class Sender {
+    /**
+     * @var SenderPool
+     */
+    private static $pool;
+    public $in_pool = true, $is_available = true, $channel;
+    public function __construct() {
+        $this->channel = Connection::getChannel();
+    }
+    public function __destruct() {
+        $this->channel->close();
+        unset($this->channel);
+        SenderPool::subCounter();
+    }
     public static function send(Task $task) {
-        $channel = Connection::getChannel();
-        switch ($task->getQueueType()) {
-            case Task::QUEUE_TYPE_TIMING:
-                $channel->exchangeDeclare(Task::QUEUE_TYPE_TIMING);
-                $channel->exchangeDeclare(Task::QUEUE_TYPE_PENDING);
-                $channel->queueDeclare(Task::QUEUE_TYPE_TIMING, false, true, false, false, false, [
-                    'x-dead-letter-exchange' => Task::QUEUE_TYPE_PENDING,
-                    'x-dead-letter-routing-key' => Task::QUEUE_TYPE_PENDING
-                ]);
-                $channel->queueBind(Task::QUEUE_TYPE_TIMING, Task::QUEUE_TYPE_TIMING, Task::QUEUE_TYPE_TIMING);
-                $channel->queueDeclare(Task::QUEUE_TYPE_PENDING, false, true, false, false, false);
-                $channel->queueBind(Task::QUEUE_TYPE_PENDING, Task::QUEUE_TYPE_PENDING, Task::QUEUE_TYPE_PENDING);
-                break;
-            case Task::QUEUE_TYPE_PENDING:
-                $channel->exchangeDeclare(Task::QUEUE_TYPE_PENDING);
-                $channel->queueDeclare(Task::QUEUE_TYPE_PENDING, false, true, false, false, false);
-                $channel->queueBind(Task::QUEUE_TYPE_PENDING, Task::QUEUE_TYPE_PENDING, Task::QUEUE_TYPE_PENDING);
-                break;
-            case Task::QUEUE_TYPE_LOG_RECYCLE:
-                $channel->exchangeDeclare(Task::QUEUE_TYPE_LOG_RECYCLE);
-                $channel->queueDeclare(Task::QUEUE_TYPE_LOG_RECYCLE, false, true, false, false, false);
-                $channel->queueBind(Task::QUEUE_TYPE_LOG_RECYCLE, Task::QUEUE_TYPE_LOG_RECYCLE,
-                    Task::QUEUE_TYPE_LOG_RECYCLE);
-                break;
-            default:
-                throw new \RuntimeException('known error');
+        if (! isset(static::$pool)) {
+            static::$pool = new SenderPool();
         }
         try {
-            $channel->publish($task->getMessageBody(), $task->getMessageHeaders(), $task->getQueueType(),
+            $sender = static::$pool->pop();
+            $sender->channel->publish($task->getMessageBody(), $task->getMessageHeaders(), $task->getQueueType(),
                 $task->getQueueType());
+            static::$pool->push($sender);
         } catch (\Throwable $e) {
-            unset($channel);
+            $sender->is_available = false;
+            static::$pool->push($sender);
             return self::send($task);
         }
-        unset($channel);
     }
 }
