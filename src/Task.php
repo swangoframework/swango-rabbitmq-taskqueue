@@ -153,7 +153,7 @@ class Task {
         if (! isset(self::$handler_namespace)) {
             [
                 'handler_namespace' => self::$handler_namespace
-            ] = Environment::getFrameworkConfig('mq_task');
+            ] = Environment::getConfig('rabbitmq');
         }
         $class_name = self::$handler_namespace . str_replace('_', '\\', $this->handler) . '\\Controller';
         if (! class_exists($class_name)) {
