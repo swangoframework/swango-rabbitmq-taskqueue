@@ -2,6 +2,7 @@
 namespace Swango\MQ\TaskQueue;
 class SenderPool {
     protected static $atomic, $too_many_connection_lock, $max_connection, $count = 0;
+    private static $pool;
     public static function init(): void {
         static::$atomic = new \Swoole\Atomic();
         static::$too_many_connection_lock = new \Swoole\Atomic();
@@ -26,7 +27,7 @@ class SenderPool {
     }
     protected $server_info, $queue, $channel, $timer;
     private const TIMEOUT = 25;
-    public function __construct() {
+    private function __construct() {
         $this->channel = new \Swoole\Coroutine\Channel(1);
         $this->queue = new \SplQueue();
         \swoole_timer_after(rand(50, 5000), '\\swoole_timer_tick', 10000, [
@@ -107,11 +108,11 @@ class SenderPool {
         $sender->in_pool = false;
         return $sender;
     }
-
     public function checkPool(?int $timer_id = null) {
         if (isset($timer_id)) {
-            if (isset($this->timer) && $this->timer !== $timer_id)
+            if (isset($this->timer) && $this->timer !== $timer_id) {
                 \swoole_timer_clear($this->timer);
+            }
             $this->timer = $timer_id;
         }
         $count = $this->queue->count();
@@ -134,8 +135,15 @@ class SenderPool {
         }
     }
     public function clearQueueAndTimer(): void {
-        if (isset($this->timer))
+        if (isset($this->timer)) {
             \swoole_timer_clear($this->timer);
+        }
         $this->queue = new \SplQueue();
+    }
+    public static function getPool(): self {
+        if (! isset(static::$pool)) {
+            static::$pool = new self();
+        }
+        return static::$pool;
     }
 }

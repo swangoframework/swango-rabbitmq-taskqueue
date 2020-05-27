@@ -1,10 +1,6 @@
 <?php
 namespace Swango\MQ\TaskQueue;
 class Sender {
-    /**
-     * @var SenderPool
-     */
-    private static $pool;
     public $in_pool = true, $is_available = true, $channel;
     public function __construct() {
         $this->channel = Connection::getChannel();
@@ -15,17 +11,15 @@ class Sender {
         SenderPool::subCounter();
     }
     public static function send(Task $task) {
-        if (! isset(static::$pool)) {
-            static::$pool = new SenderPool();
-        }
+        $pool = SenderPool::getPool();
         try {
-            $sender = static::$pool->pop();
+            $sender = $pool->pop();
             $sender->channel->publish($task->getMessageBody(), $task->getMessageHeaders(), $task->getQueueType(),
                 $task->getQueueType());
-            static::$pool->push($sender);
+            $pool->push($sender);
         } catch (\Throwable $e) {
             $sender->is_available = false;
-            static::$pool->push($sender);
+            $pool->push($sender);
             return self::send($task);
         }
     }
