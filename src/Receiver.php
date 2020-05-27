@@ -73,6 +73,12 @@ class Receiver {
     }
     private static function initQueue() {
         $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
+        $channel->exchangeDeclare(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_TIMING);
+        $channel->exchangeDeclare(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING);
+        $channel->queueDeclare(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_TIMING, false, true, false, false, false, [
+            'x-dead-letter-exchange' => \Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING,
+            'x-dead-letter-routing-key' => \Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING
+        ]);
         $channel->exchangeDeclare(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING);
         $channel->queueDeclare(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING, false, true, false, false, false);
         $channel->queueBind(\Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING,
