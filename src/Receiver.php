@@ -32,7 +32,7 @@ class Receiver {
             [
                 'receiver_num' => $receiver_num,
                 'recycle_receiver_num' => $recycle_receiver_num
-            ] = Environment::getConfig('mq_task');
+            ] = Environment::getConfig('rabbitmq');
             $receive_pool = new \Swoole\Coroutine\Channel($receiver_num);
             for ($i = 0; $i < $receiver_num; $i++) {
                 $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
