@@ -5,7 +5,6 @@ use Bunny\Client;
 use Bunny\Message;
 use Swango\Environment;
 class Receiver {
-    static $count = 0;
     public static function receive($queue_type, Channel $channel, \Swoole\Server $server) {
         $channel->run(function (Message $message, Channel $channel, Client $bunny) use ($server) {
             $data_str = Task::getTaskJsonByMessage($message);
@@ -15,16 +14,11 @@ class Receiver {
             } else {
                 $channel->ack($message); // Acknowledge message
             }
-            self::$count++;
-            if (self::$count % 1000 === 0) {
-                self::$count = 0;
-                gc_collect_cycles();
-            }
         }, $queue_type);
     }
     public static function taskHandle(string $data_str) {
         $task = Task::initByAMQPMessageJson($data_str); // Handle your message here
-        $task->execTask();
+        return $task->execTask();
     }
     public static function run(\Swoole\Server $server) {  // run on  Swoole\Runtime::enableCoroutine(true);
         go(function () use ($server) {

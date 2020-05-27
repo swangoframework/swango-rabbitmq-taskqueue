@@ -6,8 +6,11 @@ class Sender {
         $this->channel = Connection::getChannel();
     }
     public function __destruct() {
-        $this->channel->close();
-        unset($this->channel);
+        try {
+            $this->channel->close();
+            unset($this->channel);
+        } catch (\Throwable $e) {
+        };
         SenderPool::subCounter();
     }
     public static function send(Task $task) {

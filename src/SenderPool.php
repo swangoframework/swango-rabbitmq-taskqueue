@@ -77,9 +77,7 @@ class SenderPool {
         }
         // 因为各种原因，push失败了，要抛弃该条连接，总连接数减1
         if (! $sender->is_available) {
-            $sender->channel->close();
             unset($sender);
-            trigger_error("SenderPool: push fail because not connected");
             return;
         }
         $sender->in_pool = true;
