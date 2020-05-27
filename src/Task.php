@@ -30,7 +30,7 @@ class Task {
      * @return Task
      */
     public static function init($handler, $params, ?int $exec_time = null, ?int $max_attempt = null, bool $is_important = true): self {
-        $params = base64_encode(serialize($params));
+        $params = serialize($params);
         if (isset($exec_time)) {
             if ($exec_time < time()) {
                 $exec_time += time();
@@ -168,7 +168,7 @@ class Task {
         return $handler = new $class_name($this);
     }
     private function getParams() {
-        return unserialize(base64_decode($this->params));
+        return unserialize($this->params);
     }
     private function pendingTaskHandle() {
         try {
