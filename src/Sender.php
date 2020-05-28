@@ -13,17 +13,4 @@ class Sender {
         };
         SenderPool::subCounter();
     }
-    public static function send(Task $task) {
-        $pool = SenderPool::getPool();
-        try {
-            $sender = $pool->pop();
-            $sender->channel->publish($task->getMessageBody(), $task->getMessageHeaders(), $task->getQueueType(),
-                $task->getQueueType());
-            $pool->push($sender);
-        } catch (\Throwable $e) {
-            $sender->is_available = false;
-            $pool->push($sender);
-            return self::send($task);
-        }
-    }
 }

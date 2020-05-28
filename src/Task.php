@@ -16,7 +16,6 @@ use Swango\MQ\TaskQueue\Handler\AbstractController;
  * @property bool $is_important 失败后或达最大尝试数后是否写入日志
  */
 class Task {
-    const HANDLER_TYPE_CONTROLLER = 'controller';
     const QUEUE_TYPE_TIMING = 'timing', QUEUE_TYPE_PENDING = 'pending', QUEUE_TYPE_LOG_RECYCLE = 'log_recycle';
     private $uuid, $exec_time, $create_time, $handler, $params, $queue_type, $attempt, $max_attempt, $is_important = false;
     private $error;
@@ -51,6 +50,22 @@ class Task {
         $obj->queue_type = $queue_type;
         $obj->is_important = $is_important;
         return $obj;
+    }
+    public function send() {
+        $pool = SenderPool::getPool();
+        $success = false;
+        while (! $success) {
+            try {
+                $sender = $pool->pop();
+                $sender->channel->publish($this->getMessageBody(), $this->getMessageHeaders(), $this->getQueueType(),
+                    $this->getQueueType());
+                $success = true;
+                $pool->push($sender);
+            } catch (\Throwable $e) {
+                $sender->is_available = false;
+                $pool->push($sender);
+            }
+        }
     }
     public function getQueueType(): string {
         return $this->queue_type;
@@ -106,7 +121,7 @@ class Task {
         }
         $this->queue_type = self::QUEUE_TYPE_LOG_RECYCLE;
         $this->error = $e->getMessage() . '|' . $e->getTraceAsString();
-        Sender::send($this);
+        $this->send();
         return true;
     }
     public function getMessageBody(): string {
@@ -196,7 +211,7 @@ class Task {
         }
         $this->exec_time = $exec_time;
         $this->queue_type = $queue_type;
-        Sender::send($this);
+        $this->send();
         return true;
     }
     private function recycleTaskHandle() {
