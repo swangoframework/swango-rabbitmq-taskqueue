@@ -1,6 +1,6 @@
 <?php
 namespace Swango\MQ\TaskQueue\Handler;
-abstract class AbstractController {
+abstract class AbstractHandler {
     /**
      * @var \Swango\MQ\TaskQueue\Task $task
      */

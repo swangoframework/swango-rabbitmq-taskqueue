@@ -2,7 +2,7 @@
 namespace Swango\MQ\TaskQueue;
 use Bunny\Message;
 use Swango\Environment;
-use Swango\MQ\TaskQueue\Handler\AbstractController;
+use Swango\MQ\TaskQueue\Handler\AbstractHandler;
 /**
  * Class task
  * @property string $uuid 唯一ID
@@ -164,13 +164,13 @@ class Task {
         }
     }
     static $handler_namespace;
-    private function getHandlerController(): AbstractController {
+    private function getHandler(): AbstractHandler {
         if (! isset(self::$handler_namespace)) {
             [
                 'handler_namespace' => self::$handler_namespace
             ] = Environment::getConfig('rabbitmq');
         }
-        $class_name = self::$handler_namespace . str_replace('_', '\\', $this->handler) . '\\Controller';
+        $class_name = self::$handler_namespace . str_replace('_', '\\', $this->handler) . '\\Handler';
         if (! class_exists($class_name)) {
             throw new Exception\RuntimeException(sprintf('handler class [%s] is not exists', $class_name));
         }
@@ -187,7 +187,7 @@ class Task {
     }
     private function pendingTaskHandle() {
         try {
-            $controller = $this->getHandlerController();
+            $controller = $this->getHandler();
             $result = $controller->handle($this->getParams(), $retry_time);
             if (! isset($result)) {
                 return $this->retry($retry_time ?? 60);
