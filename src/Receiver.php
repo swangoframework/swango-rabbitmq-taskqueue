@@ -17,8 +17,13 @@ class Receiver {
         }, $queue_type);
     }
     public static function taskHandle(string $data_str) {
-        $task = Task::initByAMQPMessageJson($data_str); // Handle your message here
-        return $task->execTask();
+        $result_channel = new \Swoole\Coroutine\Channel();
+        go(function () use ($result_channel, $data_str) {
+            $task = Task::initByAMQPMessageJson($data_str); // Handle your message here\
+            $result = $task->execTask();
+            $result_channel->push($result);
+        });
+        return $result_channel->pop();
     }
     public static function run(\Swoole\Server $server) {  // run on  Swoole\Runtime::enableCoroutine(true);
         go(function () use ($server) {

@@ -200,6 +200,7 @@ class Task {
             $controller = $this->getHandler();
             $result = $controller->handle($this->getParams(), $retry_time);
             if (! isset($result)) {
+                // 可能会出现  生成新的重试task同时 ack 失败  导致任务重复执行
                 return $this->retry($retry_time ?? 60);
             } else {
                 return $result;
