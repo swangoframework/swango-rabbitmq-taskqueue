@@ -51,10 +51,13 @@ class Task {
         $obj->is_important = $is_important;
         return $obj;
     }
+    const MAX_TRY_TIMES = 5;
     public function send() {
         $pool = SenderPool::getPool();
         $success = false;
+        $try_times = 0;
         while (! $success) {
+            $try_times++;
             try {
                 $sender = $pool->pop();
                 $sender->channel->publish($this->getMessageBody(), $this->getMessageHeaders(), $this->getQueueType(),
@@ -64,6 +67,9 @@ class Task {
             } catch (\Throwable $e) {
                 $sender->is_available = false;
                 $pool->push($sender);
+                if ($try_times >= self::MAX_TRY_TIMES) {
+                    throw $e;
+                }
             }
         }
     }
@@ -116,12 +122,16 @@ class Task {
         return \Json::encode($data);
     }
     public function recycle(\Throwable $e) {
-        if ($this->queue_type !== self::QUEUE_TYPE_PENDING) {
+        if ($this->queue_type !== self::QUEUE_TYPE_PENDING || $this->queue_type !== self::QUEUE_TYPE_TIMING) {
             throw new Exception\RuntimeException('Invalid task to recycle');
         }
         $this->queue_type = self::QUEUE_TYPE_LOG_RECYCLE;
         $this->error = $e->getMessage() . '|' . $e->getTraceAsString();
-        $this->send();
+        try {
+            $this->send();
+        } catch (\Throwable $e) {
+            $this->execTask();
+        }
         return true;
     }
     public function getMessageBody(): string {
