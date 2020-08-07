@@ -21,6 +21,9 @@ class Task {
     private $error;
     private function __construct() {
     }
+    public function getUUID(): string {
+        return $this->uuid;
+    }
     /**
      * @param $handler
      * @param $params
