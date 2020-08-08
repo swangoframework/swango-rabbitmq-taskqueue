@@ -29,7 +29,6 @@ class Receiver {
     public static function stop() {
         if (isset(self::$pool)) {
             foreach (self::$pool as $i => $channel) {
-                echo "unset $i \n";
                 try {
                     $channel->close();
                 } catch (\Throwable $e) {
