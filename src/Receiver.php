@@ -5,6 +5,7 @@ use Bunny\Client;
 use Bunny\Message;
 use Swango\Environment;
 class Receiver {
+    private static $pool;
     public static function receive($queue_type, Channel $channel, \Swoole\Server $server) {
         $channel->run(function (Message $message, Channel $channel, Client $bunny) use ($server) {
             $data_str = Task::getTaskJsonByMessage($message);
@@ -25,9 +26,25 @@ class Receiver {
         });
         return $result_channel->pop();
     }
+    public static function stop() {
+        if (isset(self::$pool)) {
+            foreach (self::$pool as $i => $channel) {
+                echo "unset $i \n";
+                try {
+                    $channel->close();
+                } catch (\Throwable $e) {
+                }
+                unset($channel);
+            }
+            self::$pool = null;
+        }
+    }
     public static function run(\Swoole\Server $server) {  // run on  Swoole\Runtime::enableCoroutine(true);
         go(function () use ($server) {
             self::initQueue();
+            if (! isset(self::$pool)) {
+                self::$pool = [];
+            }
             [
                 'receiver_num' => $receiver_num,
                 'recycle_receiver_num' => $recycle_receiver_num
@@ -37,14 +54,16 @@ class Receiver {
                 $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
                 $receive_pool->push([
                     \Swango\MQ\TaskQueue\Task::QUEUE_TYPE_PENDING,
-                    $channel
+                    $channel,
+                    $i
                 ]);
             }
             for ($i = 0; $i < $recycle_receiver_num; $i++) {
                 $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
                 $receive_pool->push([
                     \Swango\MQ\TaskQueue\Task::QUEUE_TYPE_LOG_RECYCLE,
-                    $channel
+                    $channel,
+                    $i + $receiver_num
                 ]);
             }
             /**
@@ -52,19 +71,22 @@ class Receiver {
              */
             while ($data = $receive_pool->pop()) {
                 go(function () use ($data, $receive_pool, $server) {
-                    list($queue_type, $channel) = $data;
+                    list($queue_type, $channel, $i) = $data;
                     try {
+                        self::$pool[$i] = $channel;
                         \Swango\MQ\TaskQueue\Receiver::receive($queue_type, $channel, $server);
                     } catch (\Throwable $e) {
                         trigger_error(get_class($e) . ' ' . $e->getMessage() . ' :' . $e->getTraceAsString());
                         if (isset($channel)) {
+                            unset(self::$pool[$i]);
                             unset($channel);
                             $channel = \Swango\MQ\TaskQueue\Connection::getChannel();
                         }
                     }
                     $receive_pool->push([
                         $queue_type,
-                        $channel
+                        $channel,
+                        $i
                     ]);
                 });
             }
